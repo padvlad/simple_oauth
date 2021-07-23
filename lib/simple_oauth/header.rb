@@ -83,14 +83,20 @@ module SimpleOAuth
       signed_attributes.sort_by { |k, _| k.to_s }.collect { |k, v| %(#{k}="#{self.class.escape(v)}") }.join(', ')
     end
 
+    def attribute_allowed(key)
+      ATTRIBUTE_KEYS.include?(key)
+    end
+
+    def signature_attributes
+      matching_keys = options.keys.filter { |key| attribute_allowed(key) }
+      Hash[options.select { |key, _| matching_keys.include?(key) }.collect { |key, value| [:"oauth_#{key}", value] }]
+    end
+
     def attributes
-      matching_keys, extra_keys = options.keys.partition { |key| ATTRIBUTE_KEYS.include?(key) }
+      extra_keys = options.keys.filter { |key| !attribute_allowed(key) }
       extra_keys -= IGNORED_KEYS
-      if options[:ignore_extra_keys] || extra_keys.empty?
-        Hash[options.select { |key, _| matching_keys.include?(key) }.collect { |key, value| [:"oauth_#{key}", value] }]
-      else
-        fail "SimpleOAuth: Found extra option keys not matching ATTRIBUTE_KEYS:\n  [#{extra_keys.collect(&:inspect).join(', ')}]"
-      end
+      h = signature_attributes
+      options.select { |key, _| extra_keys.include?(key) }.merge(h)
     end
 
     def signature
@@ -115,7 +121,7 @@ module SimpleOAuth
     end
 
     def signature_params
-      attributes.to_a + params.to_a + url_params
+      signature_attributes.to_a + params.to_a + url_params
     end
 
     def url_params
